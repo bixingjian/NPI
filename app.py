@@ -25,8 +25,8 @@ app = dash.Dash(__name__)
 
 # Create a function to generate the plot based on the selected dataframe
 def create_timeline_plot(df):
-    # Ensure today is explicitly a datetime object
-    today = pd.Timestamp(datetime.datetime.now().strftime('%Y-%m-%d'))
+    # Get today's date as a string in the YYYY-MM-DD format
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
 
     # Melt the dataframe to get all date columns in one column
     df_melted = df.melt(
@@ -39,11 +39,37 @@ def create_timeline_plot(df):
     # Ensure that the Date column is recognized as datetime by Plotly
     df_melted['Date'] = pd.to_datetime(df_melted['Date'], errors='coerce')
 
+    # Create the scatter plot
     fig = px.scatter(df_melted, x="Date", y=df_melted["Project"] + "_" + df_melted["SIE"], 
                      color="Milestone", hover_data=["Milestone", "Date"])
 
-    # Add today's date as a vertical line using the correctly formatted datetime object
-    # fig.add_vline(x=today, line_dash="dash", line_color="red", annotation_text="Today", annotation_position="top left")
+    # Manually add a vertical line using shapes in the layout
+    fig.update_layout(
+        shapes=[
+            dict(
+                type="line",
+                xref="x",
+                yref="paper",
+                x0=today, x1=today,  # Using today's date for the vertical line
+                y0=0, y1=1,
+                line=dict(color="red", width=2, dash="dash"),
+            )
+        ],
+        annotations=[
+            dict(
+                x=today,
+                y=1,  # Positioning the annotation at the top of the plot
+                xref="x",
+                yref="paper",
+                text="Today: " + today,  # The annotation text showing today's date
+                showarrow=False,
+                font=dict(size=12, color="black"),
+                bgcolor="white",  # Optional: make background white for better visibility
+                bordercolor="black",
+                borderwidth=1
+            )
+        ]
+    )
 
     # Ensure x-axis is formatted correctly for dates
     fig.update_xaxes(type='date', tickformat="%Y-%m-%d")
