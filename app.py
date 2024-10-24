@@ -115,12 +115,9 @@ def create_timeline_plot(df):
 
     return fig
 
-
-# App layout
 app.layout = html.Div([
     html.H1("Project Timeline Dashboard"),
     
-    # Dropdown for selecting sheets (tabs)
     dcc.Dropdown(
         id='sheet-dropdown',
         options=[
@@ -128,54 +125,77 @@ app.layout = html.Div([
             {'label': 'Others', 'value': 'Others'},
             {'label': 'Energy', 'value': 'Energy'}
         ],
-        value='Localization',  # Default selection is Localization
+        value='Localization',  # Default is Localization
         clearable=False
     ),
     
     dcc.Graph(id='timeline-graph'),
-    
     html.Div(id='output-text'),
     
-    # Input for date modification
     html.Div([
         html.H3("Modify Date for Selected Milestone:"),
         dcc.Input(id='new-date-input', type='text', placeholder="YYYY-MM-DD"),
         html.Button('Submit', id='submit-date-btn', n_clicks=0)
-    ], style={'display': 'none'}, id='date-input-section')
+    ], style={'display': 'none'}, id='date-input-section'),
+
+    # Add hidden text areas and button initially
+    html.Div([
+        html.Div([
+            html.Label("Next Step Plan:"),
+            dcc.Textarea(
+                id='next-step-plan',
+                style={'width': '100%', 'height': 100, 'whiteSpace': 'pre-wrap'}
+            )
+        ], style={'margin': '10px 0'}),
+
+        html.Div([
+            html.Label("Action Items for Cindy:"),
+            dcc.Textarea(
+                id='action-items-cindy',
+                style={'width': '100%', 'height': 100, 'whiteSpace': 'pre-wrap'}
+            )
+        ], style={'margin': '10px 0'}),
+        
+        html.Button('Commit Edit', id='commit-edit-btn', n_clicks=0)
+    ], style={'display': 'none'}, id='edit-section')  # Initially hidden
 ])
 
 @app.callback(
     [Output('date-input-section', 'style'),
      Output('new-date-input', 'value'),
+     Output('edit-section', 'style'),
+     Output('next-step-plan', 'value'),
+     Output('action-items-cindy', 'value'),
      Output('output-text', 'children')],
     [Input('timeline-graph', 'clickData'),
-     Input('submit-date-btn', 'n_clicks')],
-    [State('new-date-input', 'value'),
+     Input('commit-edit-btn', 'n_clicks')],
+    [State('next-step-plan', 'value'),
+     State('action-items-cindy', 'value'),
      State('timeline-graph', 'clickData'),
      State('sheet-dropdown', 'value')]
 )
-def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sheet_name):
+def handle_date_modification(clickData, n_clicks, next_step_plan, action_items, click_data_state, sheet_name):
     ctx = dash.callback_context
     
     if not ctx.triggered:
-        return {'display': 'none'}, '', ''
+        return {'display': 'none'}, '', {'display': 'none'}, '', '', ''
     
+    # Check if the graph was clicked to display the editable fields
     if 'timeline-graph.clickData' in ctx.triggered[0]['prop_id']:
         if clickData:
-            clicked_milestone = clickData['points'][0]['customdata'][0]  # Use custom data for Milestone
+            clicked_milestone = clickData['points'][0]['customdata'][0]
             current_date = clickData['points'][0]['x']
             selected_project = clickData['points'][0]['y']
             
             # Split the selected project back into Project, SIE, and Risk Level
             try:
                 selected_project_split = selected_project.rsplit(" (", 1)
-                project_sie = selected_project_split[0]  # This is "Project_SIE"
-                risk_level = selected_project_split[1].rstrip(")")  # Extract risk level, remove trailing parenthesis
+                project_sie = selected_project_split[0]
+                risk_level = selected_project_split[1].rstrip(")")
                 
-                project_name, sie = project_sie.split("_")  # Split Project_SIE
-                
+                project_name, sie = project_sie.split("_")
             except (IndexError, ValueError):
-                return {'display': 'none'}, '', 'Error: Unable to parse the selected project.'
+                return {'display': 'none'}, '', {'display': 'none'}, '', '', 'Error: Unable to parse the selected project.'
 
             # Select the correct DataFrame
             if sheet_name == 'Localization':
@@ -189,21 +209,18 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
             project_info = df[(df["Project"] == project_name) & (df["SIE"] == sie) & (df["Risk Level"] == risk_level)]
             
             if project_info.empty:
-                return {'display': 'none'}, '', f'Error: No matching project found for {selected_project}'
+                return {'display': 'none'}, '', {'display': 'none'}, '', '', f'Error: No matching project found for {selected_project}'
 
             next_step_plan = project_info["Next step plan"].values[0]
             action_items = project_info["Action Items for Cindy"].values[0]
             
-            return {'display': 'block'}, current_date, html.Div([
-                html.H4(f"Modify the date for {clicked_milestone} of {selected_project}"),
-                html.P(f"Next Step Plan: {next_step_plan}"),
-                html.P(f"Action Items for Cindy: {action_items}")
-            ])
+            # Show the edit fields with the loaded values
+            return {'display': 'block'}, current_date, {'display': 'block'}, next_step_plan, action_items, ''
 
-    elif 'submit-date-btn.n_clicks' in ctx.triggered[0]['prop_id']:
+    # Check if the "Commit Edit" button was clicked to save changes
+    elif 'commit-edit-btn.n_clicks' in ctx.triggered[0]['prop_id']:
         if n_clicks > 0 and click_data_state:
             selected_project = click_data_state['points'][0]['y']
-            milestone = click_data_state['points'][0]['customdata'][0]  # Use custom data for Milestone
             
             # Split the selected project back into Project, SIE, and Risk Level
             try:
@@ -213,7 +230,7 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
                 
                 project_name, sie = project_sie.split("_")
             except (IndexError, ValueError):
-                return {'display': 'none'}, '', 'Error: Unable to parse the selected project.'
+                return {'display': 'none'}, '', {'display': 'none'}, '', '', 'Error: Unable to parse the selected project.'
             
             # Select the correct DataFrame
             if sheet_name == 'Localization':
@@ -223,18 +240,19 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
             else:
                 df = energy_df
 
-            # Update the corresponding date in the DataFrame
-            df.loc[(df["Project"] == project_name) & (df["SIE"] == sie) & (df["Risk Level"] == risk_level), milestone] = pd.to_datetime(new_date, format='%Y-%m-%d', errors='coerce')
+            # Update the DataFrame with the new values
+            df.loc[(df["Project"] == project_name) & (df["SIE"] == sie) & (df["Risk Level"] == risk_level), "Next step plan"] = next_step_plan
+            df.loc[(df["Project"] == project_name) & (df["SIE"] == sie) & (df["Risk Level"] == risk_level), "Action Items for Cindy"] = action_items
 
-            # Convert the date columns back to short format when saving
-            df[date_columns] = df[date_columns].apply(lambda x: pd.to_datetime(x, errors='coerce').dt.strftime('%Y-%m-%d') if x.dtype == 'datetime64[ns]' else x)
-
+            # Save the changes back to the Excel file
             with pd.ExcelWriter(excel_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-            return {'display': 'none'}, '', f"The date for {milestone} of {selected_project} has been updated to {new_date}."
-    
-    return {'display': 'none'}, '', ''
+            # Return a confirmation message after successful save
+            return {'display': 'none'}, '', {'display': 'none'}, '', '', f"The 'Next Step Plan' and 'Action Items for Cindy' for {selected_project} have been successfully saved."
+
+    return {'display': 'none'}, '', {'display': 'none'}, '', '', ''
+
 
 
 # Callback to update the graph based on selected sheet
