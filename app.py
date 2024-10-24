@@ -199,8 +199,8 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
             else:
                 df = energy_df
 
-            # Find the project and update the corresponding date
-            df.loc[df["Project"] + "_" + df["SIE"] == selected_project, milestone] = pd.to_datetime(new_date, errors='coerce')
+            # Update the corresponding date without the time component
+            df.loc[df["Project"] + "_" + df["SIE"] == selected_project, milestone] = pd.to_datetime(new_date, errors='coerce').date()
 
             # Convert the date columns back to short format when saving, ensuring that only datetime types are processed
             df[date_columns] = df[date_columns].apply(lambda x: pd.to_datetime(x, errors='coerce').dt.strftime('%Y-%m-%d') if x.dtype == 'datetime64[ns]' else x)
@@ -212,6 +212,7 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
             return {'display': 'none'}, '', f"The date for {milestone} of {selected_project} has been updated to {new_date}."
     
     return {'display': 'none'}, '', ''
+
 
 # Callback to update the graph based on selected sheet
 @app.callback(
