@@ -28,6 +28,9 @@ def create_timeline_plot(df):
     # Get today's date as a string in the YYYY-MM-DD format
     today = datetime.datetime.now().strftime('%Y-%m-%d')
 
+    # June 29, 2024
+    specific_date = "2024-06-29"
+
     # Melt the dataframe to get all date columns in one column
     df_melted = df.melt(
         id_vars=["SIE", "Project"],
@@ -39,13 +42,14 @@ def create_timeline_plot(df):
     # Ensure that the Date column is recognized as datetime by Plotly
     df_melted['Date'] = pd.to_datetime(df_melted['Date'], errors='coerce')
 
-    # Create the scatter plot
+    # Create the scatter plot for the milestones
     fig = px.scatter(df_melted, x="Date", y=df_melted["Project"] + "_" + df_melted["SIE"], 
                      color="Milestone", hover_data=["Milestone", "Date"])
 
-    # Manually add a vertical line using shapes in the layout
+    # Manually add vertical lines for today's date and the specific date using shapes
     fig.update_layout(
         shapes=[
+            # Vertical line for today's date
             dict(
                 type="line",
                 xref="x",
@@ -53,18 +57,41 @@ def create_timeline_plot(df):
                 x0=today, x1=today,  # Using today's date for the vertical line
                 y0=0, y1=1,
                 line=dict(color="red", width=2, dash="dash"),
+            ),
+            # Vertical line for June 29, 2024
+            dict(
+                type="line",
+                xref="x",
+                yref="paper",
+                x0=specific_date, x1=specific_date,  # Using specific date for the vertical line
+                y0=0, y1=1,
+                line=dict(color="blue", width=2, dash="dash"),
             )
         ],
         annotations=[
+            # Annotation for today's date, positioned slightly above the plot
             dict(
                 x=today,
-                y=1,  # Positioning the annotation at the top of the plot
+                y=1.05,  # Positioning the annotation slightly higher above the plot
                 xref="x",
                 yref="paper",
-                text="Today: " + today,  # The annotation text showing today's date
+                text=f"Today: {today}",
                 showarrow=False,
-                font=dict(size=12, color="black"),
-                bgcolor="white",  # Optional: make background white for better visibility
+                font=dict(size=10, color="black"),
+                bgcolor="white",
+                bordercolor="black",
+                borderwidth=1
+            ),
+            # Annotation for the specific date, positioned slightly above the plot
+            dict(
+                x=specific_date,
+                y=1.05,  # Positioning the annotation slightly higher above the plot
+                xref="x",
+                yref="paper",
+                text=f"June 29, 2024",
+                showarrow=False,
+                font=dict(size=10, color="black"),
+                bgcolor="white",
                 bordercolor="black",
                 borderwidth=1
             )
