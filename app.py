@@ -33,28 +33,30 @@ def create_timeline_plot(df):
     # Filter out rows where "Risk Level" is "Closed"
     df = filter_risk_level(df)
     
-    # Get today's date as a string in the YYYY-MM-DD format
+    # May cause error if you don't convert. Get today's date as a string in the YYYY-MM-DD format
     today = datetime.datetime.now().strftime('%Y-%m-%d')
 
-    # June 29, 2024
+    # Another date, you can add more
     specific_date = "2024-06-29"
 
-    # Melt the dataframe to get all date columns in one column
+    # Melt the dataframe to make it long format for Plotly
     df_melted = df.melt(
-        id_vars=["SIE", "Project"],
+        id_vars=["SIE", "Project", "Risk Level"],
         value_vars=date_columns,
         var_name="Milestone",
         value_name="Date"
     )
     
-    # Ensure that the Date column is recognized as datetime by Plotly
     df_melted['Date'] = pd.to_datetime(df_melted['Date'], errors='coerce')
 
+    # Concatenate the Project, SIE, and Risk Level columns for the y-axis
+    df_melted['Project_SIE_Risk'] = df_melted["Project"] + "_" + df_melted["SIE"] + " (" + df_melted["Risk Level"] + ")"
+
     # Create the scatter plot for the milestones
-    fig = px.scatter(df_melted, x="Date", y=df_melted["Project"] + "_" + df_melted["SIE"], 
+    fig = px.scatter(df_melted, x="Date", y="Project_SIE_Risk", 
                      color="Milestone", hover_data=["Milestone", "Date"])
 
-    # Manually add vertical lines for today's date and the specific date using shapes
+    # Manually add vertical lines
     fig.update_layout(
         shapes=[
             # Vertical line for today's date
@@ -80,7 +82,7 @@ def create_timeline_plot(df):
             # Annotation for today's date, positioned slightly above the plot
             dict(
                 x=today,
-                y=1.05,  # Positioning the annotation slightly higher above the plot
+                y=1.05,  
                 xref="x",
                 yref="paper",
                 text=f"Today: {today}",
@@ -90,10 +92,10 @@ def create_timeline_plot(df):
                 bordercolor="black",
                 borderwidth=1
             ),
-            # Annotation for the specific date, positioned slightly above the plot
+            # Annotation for the specific date
             dict(
                 x=specific_date,
-                y=1.05,  # Positioning the annotation slightly higher above the plot
+                y=1.05,  
                 xref="x",
                 yref="paper",
                 text=f"June 29, 2024",
@@ -109,9 +111,10 @@ def create_timeline_plot(df):
     # Ensure x-axis is formatted correctly for dates
     fig.update_xaxes(type='date', tickformat="%Y-%m-%d")
 
-    fig.update_layout(title="Project Timeline", xaxis_title="Date", yaxis_title="Projects")
+    fig.update_layout(title="Project Timeline", xaxis_title="Date", yaxis_title="Projects", height=800)
 
     return fig
+
 
 # App layout
 app.layout = html.Div([
@@ -141,7 +144,6 @@ app.layout = html.Div([
     ], style={'display': 'none'}, id='date-input-section')
 ])
 
-# Callback to handle both showing input field and modifying the date
 @app.callback(
     [Output('date-input-section', 'style'),
      Output('new-date-input', 'value'),
@@ -155,19 +157,27 @@ app.layout = html.Div([
 def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sheet_name):
     ctx = dash.callback_context
     
-    # Check which input triggered the callback
     if not ctx.triggered:
         return {'display': 'none'}, '', ''
     
-    # If a point was clicked in the graph
     if 'timeline-graph.clickData' in ctx.triggered[0]['prop_id']:
         if clickData:
-            # Extract milestone and current date from clickData
             clicked_milestone = clickData['points'][0]['customdata'][0]  # Use custom data for Milestone
             current_date = clickData['points'][0]['x']
             selected_project = clickData['points'][0]['y']
             
-            # Retrieve "Next Step Plan" and "Action Items for Cindy" for the selected project
+            # Split the selected project back into Project, SIE, and Risk Level
+            try:
+                selected_project_split = selected_project.rsplit(" (", 1)
+                project_sie = selected_project_split[0]  # This is "Project_SIE"
+                risk_level = selected_project_split[1].rstrip(")")  # Extract risk level, remove trailing parenthesis
+                
+                project_name, sie = project_sie.split("_")  # Split Project_SIE
+                
+            except (IndexError, ValueError):
+                return {'display': 'none'}, '', 'Error: Unable to parse the selected project.'
+
+            # Select the correct DataFrame
             if sheet_name == 'Localization':
                 df = localization_df
             elif sheet_name == 'Others':
@@ -175,7 +185,12 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
             else:
                 df = energy_df
 
-            project_info = df[df["Project"] + "_" + df["SIE"] == selected_project]
+            # Filter the DataFrame based on Project, SIE, and Risk Level
+            project_info = df[(df["Project"] == project_name) & (df["SIE"] == sie) & (df["Risk Level"] == risk_level)]
+            
+            if project_info.empty:
+                return {'display': 'none'}, '', f'Error: No matching project found for {selected_project}'
+
             next_step_plan = project_info["Next step plan"].values[0]
             action_items = project_info["Action Items for Cindy"].values[0]
             
@@ -185,13 +200,22 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
                 html.P(f"Action Items for Cindy: {action_items}")
             ])
 
-    # If the submit button was clicked
     elif 'submit-date-btn.n_clicks' in ctx.triggered[0]['prop_id']:
         if n_clicks > 0 and click_data_state:
             selected_project = click_data_state['points'][0]['y']
             milestone = click_data_state['points'][0]['customdata'][0]  # Use custom data for Milestone
             
-            # Modify the corresponding milestone date in the appropriate DataFrame
+            # Split the selected project back into Project, SIE, and Risk Level
+            try:
+                selected_project_split = selected_project.rsplit(" (", 1)
+                project_sie = selected_project_split[0]
+                risk_level = selected_project_split[1].rstrip(")")
+                
+                project_name, sie = project_sie.split("_")
+            except (IndexError, ValueError):
+                return {'display': 'none'}, '', 'Error: Unable to parse the selected project.'
+            
+            # Select the correct DataFrame
             if sheet_name == 'Localization':
                 df = localization_df
             elif sheet_name == 'Others':
@@ -199,13 +223,12 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
             else:
                 df = energy_df
 
-            # Update the corresponding date without the time component
-            df.loc[df["Project"] + "_" + df["SIE"] == selected_project, milestone] = pd.to_datetime(new_date, errors='coerce').date()
+            # Update the corresponding date in the DataFrame
+            df.loc[(df["Project"] == project_name) & (df["SIE"] == sie) & (df["Risk Level"] == risk_level), milestone] = pd.to_datetime(new_date, format='%Y-%m-%d', errors='coerce')
 
-            # Convert the date columns back to short format when saving, ensuring that only datetime types are processed
+            # Convert the date columns back to short format when saving
             df[date_columns] = df[date_columns].apply(lambda x: pd.to_datetime(x, errors='coerce').dt.strftime('%Y-%m-%d') if x.dtype == 'datetime64[ns]' else x)
 
-            # Save the updated DataFrame back to the Excel file
             with pd.ExcelWriter(excel_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
 
@@ -231,3 +254,4 @@ def update_graph(sheet_name):
 # Run the app
 if __name__ == '__main__':
     app.run_server(debug=True)
+
