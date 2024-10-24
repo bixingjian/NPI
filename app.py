@@ -2,8 +2,9 @@ import pandas as pd
 import plotly.express as px
 import dash
 from dash import dcc, html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import datetime
+import dash_bootstrap_components as dbc
 
 # Load the Excel file and specific sheets
 excel_file = "./NPI_Tracking.xlsx"
@@ -130,8 +131,68 @@ app.layout = html.Div([
     
     dcc.Graph(id='timeline-graph'),
     
-    html.Div(id='output-text')
+    html.Div(id='output-text'),
+    
+    # Input for date modification
+    html.Div([
+        html.H3("Modify Date for Selected Milestone:"),
+        dcc.Input(id='new-date-input', type='text', placeholder="YYYY-MM-DD"),
+        html.Button('Submit', id='submit-date-btn', n_clicks=0)
+    ], style={'display': 'none'}, id='date-input-section')
 ])
+
+# Callback to handle both showing input field and modifying the date
+@app.callback(
+    [Output('date-input-section', 'style'),
+     Output('new-date-input', 'value'),
+     Output('output-text', 'children')],
+    [Input('timeline-graph', 'clickData'),
+     Input('submit-date-btn', 'n_clicks')],
+    [State('new-date-input', 'value'),
+     State('timeline-graph', 'clickData'),
+     State('sheet-dropdown', 'value')]
+)
+def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sheet_name):
+    ctx = dash.callback_context
+    
+    # Check which input triggered the callback
+    if not ctx.triggered:
+        return {'display': 'none'}, '', ''
+    
+    # If a point was clicked in the graph
+    if 'timeline-graph.clickData' in ctx.triggered[0]['prop_id']:
+        if clickData:
+            # Extract milestone and current date from clickData
+            clicked_milestone = clickData['points'][0]['customdata'][0]  # Use custom data for Milestone
+            current_date = clickData['points'][0]['x']
+            selected_project = clickData['points'][0]['y']
+            
+            return {'display': 'block'}, current_date, f"Modify the date for {clicked_milestone} of {selected_project}"
+
+    # If the submit button was clicked
+    elif 'submit-date-btn.n_clicks' in ctx.triggered[0]['prop_id']:
+        if n_clicks > 0 and click_data_state:
+            selected_project = click_data_state['points'][0]['y']
+            milestone = click_data_state['points'][0]['customdata'][0]  # Use custom data for Milestone
+            
+            # Modify the corresponding milestone date in the appropriate DataFrame
+            if sheet_name == 'Localization':
+                df = localization_df
+            elif sheet_name == 'Others':
+                df = others_df
+            else:
+                df = energy_df
+
+            # Find the project and update the corresponding date
+            df.loc[df["Project"] + "_" + df["SIE"] == selected_project, milestone] = new_date
+
+            # Save the updated DataFrame back to the Excel file
+            with pd.ExcelWriter(excel_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+            return {'display': 'none'}, '', f"The date for {milestone} of {selected_project} has been updated to {new_date}."
+    
+    return {'display': 'none'}, '', ''
 
 # Callback to update the graph based on selected sheet
 @app.callback(
@@ -146,29 +207,6 @@ def update_graph(sheet_name):
     else:
         df = energy_df
     return create_timeline_plot(df)
-
-# Callback to display the next steps and action items when a project is clicked
-@app.callback(
-    Output('output-text', 'children'),
-    Input('timeline-graph', 'clickData')
-)
-def display_next_steps(clickData):
-    if clickData:
-        selected_project = clickData['points'][0]['y']
-        df_map = {'Localization': localization_df, 'Others': others_df, 'Energy': energy_df}
-        
-        # Try to find the project in all dataframes
-        for sheet, df in df_map.items():
-            project_info = df[df["Project"] + "_" + df["SIE"] == selected_project]
-            if not project_info.empty:
-                next_step = project_info["Next step plan"].values[0]
-                action_items = project_info["Action Items for Cindy"].values[0]
-                return html.Div([
-                    html.H3(f"Project: {selected_project}"),
-                    html.P(f"Next Step Plan: {next_step}"),
-                    html.P(f"Action Items for Cindy: {action_items}")
-                ])
-    return "Click on a project to see details."
 
 # Run the app
 if __name__ == '__main__':
