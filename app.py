@@ -4,7 +4,7 @@ import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
 import datetime
-import dash_bootstrap_components as dbc
+from openpyxl import load_workbook
 
 # Load the Excel file and specific sheets
 excel_file = "./NPI_Tracking.xlsx"
@@ -167,7 +167,23 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
             current_date = clickData['points'][0]['x']
             selected_project = clickData['points'][0]['y']
             
-            return {'display': 'block'}, current_date, f"Modify the date for {clicked_milestone} of {selected_project}"
+            # Retrieve "Next Step Plan" and "Action Items for Cindy" for the selected project
+            if sheet_name == 'Localization':
+                df = localization_df
+            elif sheet_name == 'Others':
+                df = others_df
+            else:
+                df = energy_df
+
+            project_info = df[df["Project"] + "_" + df["SIE"] == selected_project]
+            next_step_plan = project_info["Next step plan"].values[0]
+            action_items = project_info["Action Items for Cindy"].values[0]
+            
+            return {'display': 'block'}, current_date, html.Div([
+                html.H4(f"Modify the date for {clicked_milestone} of {selected_project}"),
+                html.P(f"Next Step Plan: {next_step_plan}"),
+                html.P(f"Action Items for Cindy: {action_items}")
+            ])
 
     # If the submit button was clicked
     elif 'submit-date-btn.n_clicks' in ctx.triggered[0]['prop_id']:
@@ -184,7 +200,10 @@ def handle_date_modification(clickData, n_clicks, new_date, click_data_state, sh
                 df = energy_df
 
             # Find the project and update the corresponding date
-            df.loc[df["Project"] + "_" + df["SIE"] == selected_project, milestone] = new_date
+            df.loc[df["Project"] + "_" + df["SIE"] == selected_project, milestone] = pd.to_datetime(new_date, errors='coerce')
+
+            # Convert the date columns back to short format when saving, ensuring that only datetime types are processed
+            df[date_columns] = df[date_columns].apply(lambda x: pd.to_datetime(x, errors='coerce').dt.strftime('%Y-%m-%d') if x.dtype == 'datetime64[ns]' else x)
 
             # Save the updated DataFrame back to the Excel file
             with pd.ExcelWriter(excel_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
