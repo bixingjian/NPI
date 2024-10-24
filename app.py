@@ -20,11 +20,18 @@ for df in [localization_df, others_df, energy_df]:
     for col in date_columns:
         df[col] = pd.to_datetime(df[col], errors='coerce')  # Convert to datetime, coerce errors
 
+# Filter data where "Risk Level" is not "Closed"
+def filter_risk_level(df):
+    return df[df["Risk Level"] != "Closed"]
+
 # Initialize the Dash app
 app = dash.Dash(__name__)
 
 # Create a function to generate the plot based on the selected dataframe
 def create_timeline_plot(df):
+    # Filter out rows where "Risk Level" is "Closed"
+    df = filter_risk_level(df)
+    
     # Get today's date as a string in the YYYY-MM-DD format
     today = datetime.datetime.now().strftime('%Y-%m-%d')
 
